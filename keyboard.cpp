@@ -19,10 +19,10 @@ struct key_state {
 
 static key_state keys[] = {
     KEY_F8,
-    KEY_RETURN,
+    '\\', // RETURN
     ']', // [
-    '\\', // ]
-    KEY_RIGHT_ALT, // kana
+    KEY_RIGHT_ALT, // ]
+    KEY_RETURN, // kana
     KEY_RIGHT_SHIFT,
     '`', // ¥
     KEY_BACKSPACE, // STOP
