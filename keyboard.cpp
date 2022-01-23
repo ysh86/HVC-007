@@ -173,8 +173,9 @@ void scanKeys() {
     }
 
     // update modifiers
-    updateAndSendKey(4);  // KEY_RIGHT_ALT (kana)
+    updateAndSendKey(3);  // KEY_RIGHT_ALT
     updateAndSendKey(5);  // KEY_RIGHT_SHIFT
+    updateAndSendKey(12); // KEY_LEFT_ALT
     updateAndSendKey(59); // KEY_LEFT_CTRL
     updateAndSendKey(60); // KEY_LEFT_SHIFT
     updateAndSendKey(61); // KEY_LEFT_GUI (GRPH)
