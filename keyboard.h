@@ -4,7 +4,7 @@
 
 #define DEBUG 0
 #define LOOP_MSEC 5
-#define DEBOUNCE_MASK 1 // 5[msec] * 2 = 10[msec] => 100[Hz]
+#define DEBOUNCE_MASK 3 // 5[msec] * 4 = 20[msec] => 50[Hz]
 
 constexpr uint8_t IN_D4 = 18;
 constexpr uint8_t IN_D3 = 19;
