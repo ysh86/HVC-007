@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/youpy/go-wav"
 )
@@ -55,31 +57,52 @@ func bitToBytes16(bits []byte) ([]byte, error) {
 	return ret[:], nil
 }
 
-func dumpData(bits []byte) {
+func dumpData(attrib uint16, bits []byte) {
 	cur := 0
-	for cur < len(bits) {
-		lineLen, _ := bitToByte(1, bits[cur:cur+9])
-		if lineLen == 0 {
-			// end mark: 0x00
+	if attrib == 0x02 {
+		// BASIC code
+		for cur < len(bits) {
+			lineLen, _ := bitToByte(1, bits[cur:cur+9])
+			if lineLen == 0 {
+				// end mark: 0x00
+				cur = cur + 9
+				fmt.Printf("end of data: %d\n", cur)
+				break
+			}
+			//fmt.Printf("%3d: ", lineLen)
+			lineLen -= 1
 			cur = cur + 9
-			fmt.Printf("end of data: %d\n", cur)
-			break
+
+			lineNum, _ := bitToByte(2, bits[cur:cur+9*2])
+			lineLen -= 2
+			cur = cur + 9*2
+			fmt.Printf("%4d %3d,", lineNum, lineLen)
+
+			for l := 0; l < int(lineLen); l++ {
+				b, _ := bitToByte(1, bits[cur:cur+9])
+				fmt.Printf(" %02x", b)
+				cur += 9
+			}
+			fmt.Println("")
 		}
-		//fmt.Printf("%3d: ", lineLen)
-		lineLen -= 1
-		cur = cur + 9
-
-		lineNum, _ := bitToByte(2, bits[cur:cur+9*2])
-		lineLen -= 2
-		cur = cur + 9*2
-		fmt.Printf("%4d %3d,", lineNum, lineLen)
-
-		for l := 0; l < int(lineLen); l++ {
-			b, _ := bitToByte(1, bits[cur:cur+9])
+	} else {
+		// BG2 dump
+		pos := 0
+		for cur < len(bits) {
+			b, err := bitToByte(1, bits[cur:cur+9])
+			if err != nil {
+				panic(err)
+			}
+			cur = cur + 9
+			pos++
 			fmt.Printf(" %02x", b)
-			cur += 9
+			if pos&0xf == 0 {
+				fmt.Printf("\n")
+			}
 		}
-		fmt.Println("")
+		if pos&0xf != 0 {
+			fmt.Printf("\n")
+		}
 	}
 
 	if cur != len(bits) {
@@ -87,20 +110,7 @@ func dumpData(bits []byte) {
 	}
 }
 
-func main() {
-	inFile := flag.String("infile", "", "wav file to read")
-	flag.Parse()
-
-	if len(os.Args) == 2 {
-		inFile = &os.Args[1]
-	}
-
-	f, err := os.Open(*inFile)
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
+func wav2bits(wbits io.WriteCloser, f *os.File) {
 	reader := wav.NewReader(f)
 
 	// input parameters
@@ -126,9 +136,7 @@ func main() {
 		panic(errors.New("format.BitsPerSample"))
 	}
 
-	// decode parameters
-	//
-	// WAV:
+	// wav parameters
 	//  Zero: short 10 - 13 -> 11.5 samples x2 @ 44.1kHz = 1917 Hz
 	//  One:  long  22 - 24 -> 23.0 samples x2 @ 44.1kHz = 958 Hz
 	//  margin: 2
@@ -151,9 +159,6 @@ func main() {
 	fmt.Printf("threshold 0: %v\n", countForZero)
 	fmt.Printf("threshold 1: %v\n", countForOne)
 
-	// step1: wav to bits
-	rbits, wbits := io.Pipe()
-	defer rbits.Close()
 	go func() {
 		defer wbits.Close()
 
@@ -202,6 +207,96 @@ func main() {
 			}
 		}
 	}()
+}
+
+func trace2bits(wbits io.WriteCloser, f *os.File) {
+	go func() {
+		defer wbits.Close()
+
+		scanner := bufio.NewScanner(f)
+		zeroOrOne := -1
+		count := -1
+		var bit [1]byte
+		for scanner.Scan() {
+			l := scanner.Text()
+			if strings.Contains(l, "LDA") {
+				if zeroOrOne == 1 {
+					if count == 52 {
+						bit[0] = 0
+						_, err := wbits.Write(bit[:])
+						if err != nil {
+							panic(err)
+						}
+					} else if count == 106 {
+						bit[0] = 1
+						_, err := wbits.Write(bit[:])
+						if err != nil {
+							panic(err)
+						}
+					} else {
+						panic(errors.New("invalid trace log"))
+					}
+				}
+				if strings.Contains(l, "#$04") {
+					zeroOrOne = 0
+					count = 0
+				}
+				if strings.Contains(l, "#$FF") {
+					zeroOrOne = 1
+					count = 0
+				}
+			}
+			if strings.Contains(l, "DEC") {
+				count += 1
+			}
+		}
+		if zeroOrOne == 1 {
+			if count == 52 {
+				bit[0] = 0
+				_, err := wbits.Write(bit[:])
+				if err != nil {
+					panic(err)
+				}
+			} else if count == 106 {
+				bit[0] = 1
+				_, err := wbits.Write(bit[:])
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				panic(errors.New("invalid trace log"))
+			}
+		}
+	}()
+}
+
+func main() {
+	inFile := flag.String("infile", "", "wav/trace file to decode")
+	flag.Parse()
+	if len(os.Args) == 2 {
+		inFile = &os.Args[1]
+	}
+
+	var err error
+	var f *os.File
+	if *inFile == "-" {
+		f = os.Stdin
+	} else {
+		f, err = os.Open(*inFile)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+	}
+
+	// step1: wav/trace to bits
+	rbits, wbits := io.Pipe()
+	defer rbits.Close()
+	if strings.HasSuffix(*inFile, ".wav") {
+		wav2bits(wbits, f)
+	} else {
+		trace2bits(wbits, f)
+	}
 
 	// step2: bits to Tape blocks
 	errc := make(chan interface{})
@@ -210,6 +305,7 @@ func main() {
 
 		var bits [1024 * 9]byte
 		var dataLen uint16
+		var attrib uint16
 		for {
 			// skip start code
 			countZeros := 0
@@ -231,7 +327,7 @@ func main() {
 			fmt.Printf("start zeros: %d\n", countZeros)
 
 			// tape mark
-			_, err = io.ReadFull(rbits, bits[1:20])
+			_, err := io.ReadFull(rbits, bits[1:20])
 			if err != nil {
 				panic(err)
 			}
@@ -284,7 +380,7 @@ func main() {
 				if bits[0] != 1 {
 					panic(fmt.Errorf("invalid start bit: %d", bits[0]))
 				}
-				attrib, _ := bitToByte(1, bits[1:1+9])
+				attrib, _ = bitToByte(1, bits[1:1+9])
 				name, _ := bitToBytes16(bits[10 : 10+9*16])
 				reserved, _ := bitToByte(1, bits[154:154+9])
 				dataLen, _ = bitToByte(2, bits[163:163+9*2])
@@ -321,7 +417,7 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				dumpData(data)
+				dumpData(attrib, data)
 
 				// checksum
 				_, err = io.ReadFull(rbits, bits[0:18])
