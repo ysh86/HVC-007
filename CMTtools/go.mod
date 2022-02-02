@@ -1,4 +1,4 @@
-module github.com/ysh86/HVC-007/PWMtools
+module github.com/ysh86/HVC-007/CMTtools
 
 go 1.17
 

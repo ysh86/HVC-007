@@ -128,9 +128,9 @@ func main() {
 
 	// decode parameters
 	//
-	// PWM:
-	//  Zero: 10 - 13 -> 11.5 samples x2 @ 44.1kHz = 1917 Hz
-	//  One:  22 - 24 -> 23.0 samples x2 @ 44.1kHz = 958 Hz
+	// WAV:
+	//  Zero: short 10 - 13 -> 11.5 samples x2 @ 44.1kHz = 1917 Hz
+	//  One:  long  22 - 24 -> 23.0 samples x2 @ 44.1kHz = 958 Hz
 	//  margin: 2
 	//
 	thLo := 0
@@ -151,7 +151,7 @@ func main() {
 	fmt.Printf("threshold 0: %v\n", countForZero)
 	fmt.Printf("threshold 1: %v\n", countForOne)
 
-	// step1: PWM to bits
+	// step1: wav to bits
 	rbits, wbits := io.Pipe()
 	defer rbits.Close()
 	go func() {
